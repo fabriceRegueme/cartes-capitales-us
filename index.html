@@ -1,0 +1,1495 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jeu de Cartes — Capitales des États-Unis</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+  <style>
+    :root {
+      --federal-navy: #14284b;
+      --american-red: #b91c1c;
+      --warm-gold: #b45309;
+      --cream-card: #fffdf8;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f1f5f9;
+      color: #0f172a;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body {
+        background-color: #0b1120;
+        color: #f8fafc;
+      }
+    }
+
+    /* Effet 3D de retournement de carte */
+    .card-scene {
+      perspective: 1400px;
+      width: 100%;
+      max-width: 520px;
+      min-height: 495px;
+      margin: 0 auto;
+    }
+
+    .card-object {
+      width: 100%;
+      min-height: 495px;
+      position: relative;
+      transform-style: preserve-3d;
+      transition: transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+      cursor: pointer;
+    }
+
+    .card-object.is-flipped {
+      transform: rotateY(180deg);
+    }
+
+    .card-face {
+      position: absolute;
+      inset: 0;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+      border-radius: 1.5rem;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      box-shadow:
+        0 20px 35px -12px rgba(15, 23, 42, 0.22),
+        0 4px 12px -4px rgba(15, 23, 42, 0.08);
+    }
+
+    .card-front {
+      background: linear-gradient(165deg, #ffffff 0%, #fffdf7 100%);
+      border: 2px solid #cbd5e1;
+    }
+
+    .card-back {
+      background: linear-gradient(165deg, #14284b 0%, #1e3a6e 100%);
+      color: #ffffff;
+      transform: rotateY(180deg);
+      border: 2px solid #1e3a6e;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .card-front {
+        background: linear-gradient(165deg, #1e293b 0%, #0f172a 100%);
+        border-color: #334155;
+        color: #f8fafc;
+      }
+    }
+
+    /* Boutons de jeu avec relief */
+    .game-btn {
+      transition: transform 0.14s ease, box-shadow 0.14s ease, background-color 0.2s ease;
+      box-shadow: 0 4px 0 rgba(15, 23, 42, 0.16);
+    }
+
+    .game-btn:active:not(:disabled) {
+      transform: translateY(2px);
+      box-shadow: 0 2px 0 rgba(15, 23, 42, 0.16);
+    }
+
+    .game-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    .stripe-bar {
+      height: 6px;
+      background: repeating-linear-gradient(
+        90deg,
+        #14284b 0px,
+        #14284b 24px,
+        #ffffff 24px,
+        #ffffff 36px,
+        #b91c1c 36px,
+        #b91c1c 60px,
+        #ffffff 60px,
+        #ffffff 72px
+      );
+    }
+
+    /* Animation d'onde sonore pendant la lecture vocale */
+    @keyframes soundWave {
+      0%, 100% { transform: scaleY(0.35); }
+      50% { transform: scaleY(1); }
+    }
+
+    .sound-bars span {
+      display: inline-block;
+      width: 3px;
+      height: 12px;
+      border-radius: 9999px;
+      background-color: currentColor;
+      transform: scaleY(0.45);
+      transition: transform 0.15s ease;
+    }
+
+    .is-speaking .sound-bars span:nth-child(1) {
+      animation: soundWave 0.65s ease-in-out infinite;
+    }
+    .is-speaking .sound-bars span:nth-child(2) {
+      animation: soundWave 0.65s ease-in-out 0.18s infinite;
+    }
+    .is-speaking .sound-bars span:nth-child(3) {
+      animation: soundWave 0.65s ease-in-out 0.34s infinite;
+    }
+
+    .flag-frame {
+      box-shadow: 0 6px 18px -4px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(15, 23, 42, 0.08);
+    }
+
+    /* Animation du point de capitale sur la carte */
+    @keyframes capitalPulse {
+      0% {
+        transform: scale(0.8);
+        opacity: 0.85;
+      }
+      70% {
+        transform: scale(2.4);
+        opacity: 0;
+      }
+      100% {
+        transform: scale(2.4);
+        opacity: 0;
+      }
+    }
+
+    .capital-pulse-ring {
+      transform-box: fill-box;
+      transform-origin: center;
+      animation: capitalPulse 2s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+    }
+
+    .state-map-box {
+      background-image: radial-gradient(circle at 1px 1px, rgba(148, 163, 184, 0.24) 1px, transparent 0);
+      background-size: 14px 14px;
+    }
+  </style>
+</head>
+<body class="antialiased selection:bg-red-100 selection:text-red-900">
+  <div id="app" class="max-w-5xl mx-auto px-4 py-6 sm:py-8">
+    <!-- En-tête du jeu -->
+    <header class="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200/80 dark:border-slate-800 overflow-hidden mb-6">
+      <div class="stripe-bar"></div>
+      <div class="p-5 sm:p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-red-50 text-red-700 dark:bg-red-950/60 dark:text-red-300 mb-2">
+            <span>★</span> Jeu de Cartes Interactif • 50 États US
+          </div>
+          <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">
+            Capitales des États-Unis
+          </h1>
+          <p class="text-sm text-slate-600 dark:text-slate-400 mt-1">
+            Drapeaux, cartes géographiques avec position de la capitale, audio <span class="font-semibold text-[#14284b] dark:text-sky-300">en-US</span> et quiz.
+          </p>
+        </div>
+
+        <!-- Sélecteur de mode -->
+        <div class="flex flex-wrap gap-2" role="tablist" aria-label="Modes de jeu">
+          <button id="mode-flashcards" type="button" class="game-btn px-4 py-2.5 rounded-xl text-sm font-bold bg-[#14284b] text-white">
+            Cartes
+          </button>
+          <button id="mode-quiz" type="button" class="game-btn px-4 py-2.5 rounded-xl text-sm font-bold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700">
+            Quiz QCM
+          </button>
+          <button id="mode-deck" type="button" class="game-btn px-4 py-2.5 rounded-xl text-sm font-bold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700">
+            Toutes les cartes
+          </button>
+        </div>
+      </div>
+
+      <!-- Barre de progression et statistiques -->
+      <div class="px-5 sm:px-6 py-3.5 bg-slate-50 dark:bg-slate-950/50 border-t border-slate-200/70 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-sm">
+        <div class="flex flex-wrap items-center gap-3 sm:gap-4">
+          <span class="font-semibold text-slate-700 dark:text-slate-300">
+            Maîtrisées : <strong id="mastered-count" class="text-emerald-600 dark:text-emerald-400">0</strong> / 50
+          </span>
+          <span class="font-semibold text-slate-700 dark:text-slate-300">
+            À revoir : <strong id="review-count" class="text-amber-600 dark:text-amber-400">50</strong>
+          </span>
+          <span class="font-semibold text-slate-700 dark:text-slate-300">
+            Score Quiz : <strong id="quiz-score" class="text-[#14284b] dark:text-sky-400">0</strong>
+          </span>
+          <span class="font-semibold text-slate-700 dark:text-slate-300">
+            Série : <strong id="quiz-streak" class="text-rose-600 dark:text-rose-400">0</strong>
+          </span>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <!-- Contrôle vitesse audio -->
+          <div class="inline-flex items-center rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 p-0.5 text-xs font-semibold" title="Vitesse de prononciation audio">
+            <span class="px-2 text-slate-500 dark:text-slate-400 hidden sm:inline">Audio :</span>
+            <button id="speed-normal-btn" type="button" class="px-2.5 py-1 rounded-lg bg-[#14284b] text-white transition-colors">
+              Normal
+            </button>
+            <button id="speed-slow-btn" type="button" class="px-2.5 py-1 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+              Lent 0.7×
+            </button>
+          </div>
+
+          <button
+            id="auto-audio-btn"
+            type="button"
+            title="Lire automatiquement la prononciation au changement de carte"
+            class="px-2.5 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            Auto-son : Off
+          </button>
+
+          <label for="region-filter" class="sr-only">Filtrer par région</label>
+          <select id="region-filter" class="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-[#14284b]">
+            <option value="ALL">Toutes les régions (50)</option>
+            <option value="REVIEW">À revoir uniquement</option>
+            <option value="Nord-Est">Nord-Est</option>
+            <option value="Midwest">Midwest</option>
+            <option value="Sud">Sud</option>
+            <option value="Ouest">Ouest</option>
+          </select>
+          <button id="shuffle-btn" type="button" class="game-btn px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold bg-amber-500 hover:bg-amber-600 text-white">
+            Mélanger
+          </button>
+          <button id="reset-btn" type="button" class="game-btn px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200">
+            Réinitialiser
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Zone de notification / message (sans alert) -->
+    <div id="feedback-banner" class="hidden mb-5 px-4 py-3 rounded-2xl text-sm font-medium border transition-all" role="status" aria-live="polite"></div>
+
+    <!-- VUE 1 : JEU DE CARTES INTERACTIF -->
+    <section id="view-flashcards" aria-label="Carte interactive">
+      <div class="flex flex-wrap items-center justify-between gap-2 max-w-[520px] mx-auto mb-3 text-xs sm:text-sm font-semibold text-slate-500 dark:text-slate-400">
+        <span id="card-counter">Carte 1 sur 50</span>
+        <div class="flex items-center gap-2">
+          <button
+            id="toggle-front-map-btn"
+            type="button"
+            title="Afficher ou masquer la carte de l'État avec le point de la capitale comme indice au recto"
+            class="px-2.5 py-1 rounded-full bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/70 dark:hover:bg-amber-900/80 text-amber-900 dark:text-amber-200 border border-amber-300/80 dark:border-amber-800 text-xs font-bold transition-colors"
+          >
+            Indice carte : Off
+          </button>
+          <span id="card-code-badge" class="px-2 py-0.5 rounded-md bg-slate-200/80 dark:bg-slate-800 font-mono text-xs text-slate-700 dark:text-slate-300">AL</span>
+          <span id="card-region-badge" class="px-2.5 py-0.5 rounded-full bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Région</span>
+        </div>
+      </div>
+
+      <!-- Carte 3D -->
+      <div id="flashcard-scene" class="card-scene select-none">
+        <div id="flashcard-object" class="card-object" tabindex="0" role="button" aria-label="Retourner la carte">
+          <!-- RECTO -->
+          <div class="card-face card-front p-5 sm:p-6">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-extrabold uppercase tracking-widest text-red-700 dark:text-red-400">
+                ÉTAT DES ÉTATS-UNIS
+              </span>
+              <span id="front-mastered-pill" class="hidden text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                ✓ Maîtrisé
+              </span>
+            </div>
+
+            <div class="my-auto text-center py-2 flex flex-col items-center">
+              <!-- Visuel Recto : Drapeau Officiel (+ Carte géographique de l'État si l'indice est activé) -->
+              <div class="flex items-center justify-center gap-3 sm:gap-4 mb-4 w-full">
+                <div id="front-flag-container" class="flag-frame w-40 h-26 sm:w-44 sm:h-28 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0 transition-all">
+                  <!-- Rempli dynamiquement -->
+                </div>
+                <div id="front-map-hint-wrapper" class="hidden flex-col items-center">
+                  <div id="front-map-container" class="state-map-box w-36 h-26 sm:w-40 sm:h-28 rounded-xl border border-slate-300/90 dark:border-slate-600 bg-slate-50/90 dark:bg-slate-800/90 flex items-center justify-center overflow-hidden shadow-inner">
+                    <!-- Carte géographique de l'État avec point rouge -->
+                  </div>
+                  <span class="text-[10px] font-semibold text-slate-500 dark:text-slate-400 mt-1">Position de la capitale</span>
+                </div>
+              </div>
+
+              <div class="flex items-center justify-center gap-2.5 flex-wrap">
+                <h2 id="front-state" class="text-3xl sm:text-4xl font-extrabold text-[#14284b] dark:text-white tracking-tight">
+                  Alabama
+                </h2>
+                <button
+                  id="speak-front-state-btn"
+                  type="button"
+                  data-no-flip="true"
+                  title="Écouter la prononciation de l'État (en-US) — Touche S"
+                  aria-label="Écouter la prononciation de l'État"
+                  class="game-btn inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold"
+                >
+                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+                  </svg>
+                  <span class="sound-bars inline-flex items-center gap-0.5 h-3" aria-hidden="true">
+                    <span></span><span></span><span></span>
+                  </span>
+                </button>
+              </div>
+
+              <p class="text-xs uppercase tracking-wider text-slate-400 mt-2 mb-0.5">se prononce</p>
+              <p id="front-pronunciation" class="text-lg sm:text-xl font-bold italic text-red-700 dark:text-red-400">
+                a-la-BÈ-ma
+              </p>
+            </div>
+
+            <div class="pt-3 border-t border-slate-200/80 dark:border-slate-700/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+              <span class="font-semibold text-[#14284b] dark:text-sky-300">Quelle est sa capitale ?</span>
+              <span>Espace / Clic pour retourner ↻</span>
+            </div>
+          </div>
+
+          <!-- VERSO -->
+          <div class="card-face card-back p-5 sm:p-6">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs font-extrabold uppercase tracking-widest text-amber-300">
+                CAPITALE &amp; LOCALISATION
+              </span>
+              <div class="flex items-center gap-2">
+                <div id="back-mini-flag" class="w-8 h-5 rounded overflow-hidden border border-white/25 bg-slate-900 flex items-center justify-center"></div>
+                <span id="back-state-label" class="text-xs font-semibold text-sky-200">
+                  Alabama
+                </span>
+              </div>
+            </div>
+
+            <div class="my-auto py-1.5">
+              <!-- Bloc Capitale + Carte géographique de l'État avec point -->
+              <div class="grid grid-cols-1 sm:grid-cols-12 gap-3 items-center bg-white/10 rounded-2xl p-3 border border-white/15">
+                <div class="sm:col-span-6 flex flex-col justify-between">
+                  <p class="text-[11px] uppercase tracking-wider text-sky-200/85">Capitale</p>
+                  <h3 id="back-capital" class="text-2xl sm:text-2xl font-extrabold text-white leading-tight mt-0.5">
+                    Montgomery
+                  </h3>
+                  <p id="back-capital-pron" class="text-sm italic text-amber-200 font-semibold mt-0.5">
+                    (mon-GUEUM-eu-ri)
+                  </p>
+                  <div class="mt-2.5">
+                    <button
+                      id="speak-back-capital-btn"
+                      type="button"
+                      data-no-flip="true"
+                      title="Écouter la prononciation de la capitale (en-US) — Touche S"
+                      aria-label="Écouter la prononciation de la capitale"
+                      class="game-btn inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-extrabold"
+                    >
+                      <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                        <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                      </svg>
+                      <span>Écouter</span>
+                      <span class="sound-bars inline-flex items-center gap-0.5 h-3" aria-hidden="true">
+                        <span></span><span></span><span></span>
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Carte de l'État avec le point de la capitale -->
+                <div class="sm:col-span-6 flex flex-col items-center">
+                  <div id="back-map-container" class="w-full h-32 sm:h-36 rounded-xl bg-[#0d1c36]/90 border border-sky-300/25 flex items-center justify-center overflow-hidden relative">
+                    <!-- SVG D3 injecté dynamiquement -->
+                  </div>
+                </div>
+              </div>
+
+              <div class="mt-3 pt-2.5 border-t border-white/15">
+                <p class="text-[11px] uppercase tracking-wider text-sky-200/80 mb-1.5">Villes principales (cliquer pour écouter)</p>
+                <div id="back-cities-list" class="flex flex-wrap gap-1.5">
+                  <!-- Rempli dynamiquement avec boutons audio par ville -->
+                </div>
+              </div>
+
+              <div class="mt-2.5 p-2.5 rounded-xl bg-white/10 text-xs text-amber-100 leading-relaxed">
+                <span class="font-bold text-amber-300">Astuce mémoire :</span> <span id="back-tip">Première capitale confédérée, au cœur du Sud.</span>
+              </div>
+            </div>
+
+            <div class="pt-2 border-t border-white/15 flex items-center justify-between text-xs text-sky-200/80">
+              <span>Verso de la carte</span>
+              <span>Cliquer pour revoir l’État ↻</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Contrôles de navigation et validation -->
+      <div class="max-w-[520px] mx-auto mt-5 flex flex-col gap-3">
+        <div class="grid grid-cols-3 gap-2.5">
+          <button id="prev-card-btn" type="button" class="game-btn py-3 px-3 rounded-2xl text-sm font-bold bg-white dark:bg-slate-800 text-slate-800 dark:text-white border border-slate-300 dark:border-slate-700">
+            ← Préc.
+          </button>
+          <button id="flip-card-btn" type="button" class="game-btn py-3 px-3 rounded-2xl text-sm font-bold bg-[#14284b] hover:bg-[#1d396a] text-white">
+            Retourner
+          </button>
+          <button id="next-card-btn" type="button" class="game-btn py-3 px-3 rounded-2xl text-sm font-bold bg-white dark:bg-slate-800 text-slate-800 dark:text-white border border-slate-300 dark:border-slate-700">
+            Suiv. →
+          </button>
+        </div>
+
+        <button id="toggle-mastered-btn" type="button" class="game-btn w-full py-3 px-4 rounded-2xl text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white">
+          ✓ Marquer cet État comme maîtrisé
+        </button>
+
+        <p class="text-center text-xs text-slate-500 dark:text-slate-400">
+          Raccourcis clavier : <kbd class="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 font-mono">←</kbd> <kbd class="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 font-mono">→</kbd> naviguer • <kbd class="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 font-mono">Espace</kbd> retourner • <kbd class="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 font-mono">S</kbd> écouter • <kbd class="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 font-mono">M</kbd> carte
+        </p>
+      </div>
+    </section>
+
+    <!-- VUE 2 : MODE QUIZ INTERACTIF -->
+    <section id="view-quiz" class="hidden max-w-2xl mx-auto" aria-label="Quiz des capitales">
+      <div class="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80 dark:border-slate-800">
+        <div class="flex items-center justify-between gap-2 mb-4">
+          <span class="text-xs font-extrabold uppercase tracking-wider text-red-700 dark:text-red-400">
+            Défi Capitales • Question <span id="quiz-q-num">1</span>
+          </span>
+          <span id="quiz-region" class="text-xs font-semibold px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+            Région
+          </span>
+        </div>
+
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div class="flex items-center gap-4">
+            <div id="quiz-flag-container" class="flag-frame w-24 h-16 sm:w-28 sm:h-20 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 shrink-0 flex items-center justify-center"></div>
+            <div class="flex-1">
+              <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400">Quelle est la capitale de cet État ?</p>
+              <div class="flex items-center gap-2 flex-wrap mt-1">
+                <h2 id="quiz-state-name" class="text-2xl sm:text-3xl font-extrabold text-[#14284b] dark:text-white">
+                  Alabama
+                </h2>
+                <button
+                  id="speak-quiz-state-btn"
+                  type="button"
+                  title="Écouter le nom de l'État (en-US) — Touche S"
+                  aria-label="Écouter le nom de l'État"
+                  class="game-btn inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold"
+                >
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                  </svg>
+                  <span class="sound-bars inline-flex items-center gap-0.5 h-3" aria-hidden="true">
+                    <span></span><span></span><span></span>
+                  </span>
+                </button>
+              </div>
+              <p id="quiz-state-pron" class="text-sm sm:text-base italic font-semibold text-red-700 dark:text-red-400 mt-0.5">
+                se prononce a-la-BÈ-ma
+              </p>
+            </div>
+          </div>
+
+          <!-- Carte géographique de l'État avec point de la capitale (indice visuel puis révélation) -->
+          <div class="flex flex-col items-center shrink-0">
+            <div id="quiz-map-container" class="state-map-box w-36 h-24 sm:w-40 sm:h-28 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 flex items-center justify-center overflow-hidden"></div>
+            <span id="quiz-map-caption" class="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-1">Indice géographique</span>
+          </div>
+        </div>
+
+        <div id="quiz-options" class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-6"></div>
+
+        <div id="quiz-explanation" class="hidden mt-5 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-sm">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p id="quiz-explanation-text" class="font-medium text-slate-700 dark:text-slate-200"></p>
+              <p id="quiz-explanation-cities" class="text-xs text-slate-500 dark:text-slate-400 mt-1"></p>
+            </div>
+            <button
+              id="speak-quiz-capital-btn"
+              type="button"
+              title="Écouter la capitale (en-US)"
+              class="game-btn shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#14284b] hover:bg-[#1d396a] text-white text-xs font-bold"
+            >
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+              </svg>
+              <span>Capitale</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="mt-6 flex justify-end">
+          <button id="next-quiz-btn" type="button" class="game-btn px-5 py-3 rounded-2xl text-sm font-bold bg-[#14284b] hover:bg-[#1d396a] text-white" disabled>
+            Question suivante →
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- VUE 3 : GRILLE DE TOUTES LES CARTES -->
+    <section id="view-deck" class="hidden" aria-label="Toutes les cartes">
+      <div class="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <p class="text-sm text-slate-600 dark:text-slate-400">
+          Cliquez sur les boutons haut-parleur pour écouter chaque État ou capitale en anglais américain.
+        </p>
+        <input
+          id="search-deck-input"
+          type="search"
+          placeholder="Rechercher un État ou une capitale..."
+          class="w-full sm:w-72 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#14284b]"
+        />
+      </div>
+      <div id="deck-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+    </section>
+  </div>
+
+  <script>
+    /**
+     * Jeu de cartes interactif des 50 États des États-Unis et de leurs capitales.
+     * Inclut les drapeaux officiels, la carte géographique de chaque État (D3.js + TopoJSON)
+     * avec un marqueur précis sur la capitale, et la synthèse vocale en anglais américain (en-US).
+     */
+    const US_STATES_DATA = [
+      { fips: "01", code: "al", coords: [-86.3006, 32.3792], state: "Alabama", statePron: "a-la-BÈ-ma", capital: "Montgomery", capitalPron: "mon-GUEUM-eu-ri", cities: [{ name: "Birmingham", pron: "BEUR-ming-ham" }, { name: "Huntsville", pron: "HEUNTS-vil" }, { name: "Mobile", pron: "mo-BIL" }], region: "Sud", tip: "Commence par A, capitale avec M comme Montgomery Bus Boycott." },
+      { fips: "02", code: "ak", coords: [-134.4197, 58.3019], state: "Alaska", statePron: "a-LAS-ka", capital: "Juneau", capitalPron: "DJOU-no", cities: [{ name: "Anchorage", pron: "ÈN-keu-ridj" }, { name: "Fairbanks", pron: "FÈR-bènks" }], region: "Ouest", tip: "Accessible uniquement par mer ou par air au sud-est de l’État." },
+      { fips: "04", code: "az", coords: [-112.0740, 33.4484], state: "Arizona", statePron: "a-ri-ZO-na", capital: "Phoenix", capitalPron: "FI-niks", cities: [{ name: "Tucson", pron: "TOU-son" }, { name: "Mesa", pron: "MÈ-sa" }], region: "Ouest", tip: "Le phénix renaît de ses cendres dans le désert aride." },
+      { fips: "05", code: "ar", coords: [-92.2896, 34.7465], state: "Arkansas", statePron: "AR-kan-so", capital: "Little Rock", capitalPron: "LI-tel rok", cities: [{ name: "Fayetteville", pron: "FÈ-ète-vil" }, { name: "Fort Smith", pron: "fort SMITH" }], region: "Sud", tip: "Un petit rocher (« Little Rock ») sur les rives de la rivière Arkansas." },
+      { fips: "06", code: "ca", coords: [-121.4944, 38.5816], state: "California", statePron: "ka-li-FORN-ya", capital: "Sacramento", capitalPron: "sa-kra-MÈN-to", cities: [{ name: "Los Angeles", pron: "los ÈN-dje-lès" }, { name: "San Diego", pron: "sann di-È-go" }, { name: "San Francisco", pron: "sann fran-SIS-ko" }], region: "Ouest", tip: "Ni Los Angeles ni San Francisco, mais Sacramento au centre." },
+      { fips: "08", code: "co", coords: [-104.9903, 39.7392], state: "Colorado", statePron: "ko-lo-RÈ-do", capital: "Denver", capitalPron: "DÈN-veur", cities: [{ name: "Colorado Springs", pron: "ko-lo-RÈ-do SPRINGZ" }, { name: "Aurora", pron: "o-RO-ra" }], region: "Ouest", tip: "La « Mile High City » au pied des montagnes Rocheuses." },
+      { fips: "09", code: "ct", coords: [-72.6734, 41.7658], state: "Connecticut", statePron: "ko-NÈ-ti-keut", capital: "Hartford", capitalPron: "HART-feurd", cities: [{ name: "Bridgeport", pron: "BRIDJ-port" }, { name: "New Haven", pron: "niou HÈ-ven" }], region: "Nord-Est", tip: "Capitale historique de l’assurance en Nouvelle-Angleterre." },
+      { fips: "10", code: "de", coords: [-75.5244, 39.1582], state: "Delaware", statePron: "DÈ-la-ouèr", capital: "Dover", capitalPron: "DO-veur", cities: [{ name: "Wilmington", pron: "OUIL-ming-teun" }, { name: "Newark", pron: "NIOU-eurk" }], region: "Nord-Est", tip: "Premier État à ratifier la Constitution ; capitale commençant par D." },
+      { fips: "12", code: "fl", coords: [-84.2807, 30.4383], state: "Florida", statePron: "FLO-ri-da", capital: "Tallahassee", capitalPron: "ta-la-HA-si", cities: [{ name: "Miami", pron: "maï-È-mi" }, { name: "Orlando", pron: "or-LÈN-do" }, { name: "Jacksonville", pron: "DJÈK-seun-vil" }], region: "Sud", tip: "Située dans le nord de la péninsule, loin de Miami." },
+      { fips: "13", code: "ga", coords: [-84.3880, 33.7490], state: "Georgia", statePron: "DJOR-dja", capital: "Atlanta", capitalPron: "at-LÈN-ta", cities: [{ name: "Savannah", pron: "sa-VÈ-na" }, { name: "Augusta", pron: "o-GUEUS-ta" }], region: "Sud", tip: "Grand carrefour aérien et économique du Sud-Est." },
+      { fips: "15", code: "hi", coords: [-157.8583, 21.3069], state: "Hawaii", statePron: "ha-OUA-i", capital: "Honolulu", capitalPron: "ho-no-LOU-lou", cities: [{ name: "Hilo", pron: "HI-lo" }, { name: "Kailua", pron: "kaï-LOU-a" }], region: "Ouest", tip: "Sur l’île d’Oʻahu, célèbre pour sa plage de Waikiki." },
+      { fips: "16", code: "id", coords: [-116.2023, 43.6150], state: "Idaho", statePron: "AÏ-da-ho", capital: "Boise", capitalPron: "BOÏ-zi", cities: [{ name: "Meridian", pron: "me-RI-di-an" }, { name: "Nampa", pron: "NÈM-pa" }], region: "Ouest", tip: "Un nom court de cinq lettres : Boise." },
+      { fips: "17", code: "il", coords: [-89.6501, 39.7817], state: "Illinois", statePron: "i-li-NOÏ", capital: "Springfield", capitalPron: "SPRINNG-fild", cities: [{ name: "Chicago", pron: "chi-KA-go" }, { name: "Aurora", pron: "o-RO-ra" }], region: "Midwest", tip: "Pas Chicago ! Springfield est liée à Abraham Lincoln." },
+      { fips: "18", code: "in", coords: [-86.1581, 39.7684], state: "Indiana", statePron: "in-di-È-na", capital: "Indianapolis", capitalPron: "in-di-a-NA-po-lis", cities: [{ name: "Fort Wayne", pron: "fort OUÈNE" }, { name: "Evansville", pron: "È-veunz-vil" }], region: "Midwest", tip: "Le nom de l’État est intégré au début d’Indianapolis." },
+      { fips: "19", code: "ia", coords: [-93.6091, 41.5868], state: "Iowa", statePron: "AÏ-o-oua", capital: "Des Moines", capitalPron: "de MOÏN", cities: [{ name: "Cedar Rapids", pron: "SI-deur RÈ-pidz" }, { name: "Davenport", pron: "DÈ-ven-port" }], region: "Midwest", tip: "Une capitale à consonance française au cœur des plaines." },
+      { fips: "20", code: "ks", coords: [-95.6890, 39.0473], state: "Kansas", statePron: "KÈN-zeuss", capital: "Topeka", capitalPron: "to-PI-ka", cities: [{ name: "Wichita", pron: "OUI-chi-to" }, { name: "Kansas City", pron: "KÈN-zeuss SI-ti" }], region: "Midwest", tip: "Pas Kansas City (qui est surtout dans le Missouri voisin)." },
+      { fips: "21", code: "ky", coords: [-84.8733, 38.2009], state: "Kentucky", statePron: "kèn-TEU-ki", capital: "Frankfort", capitalPron: "FRANK-feurt", cities: [{ name: "Louisville", pron: "LOU-i-vil" }, { name: "Lexington", pron: "LÈK-sing-teun" }], region: "Sud", tip: "Sur la rivière Kentucky, plus petite que Louisville et Lexington." },
+      { fips: "22", code: "la", coords: [-91.1871, 30.4515], state: "Louisiana", statePron: "lou-i-zi-È-na", capital: "Baton Rouge", capitalPron: "BA-teun ROUJ", cities: [{ name: "New Orleans", pron: "niou or-LI-ans" }, { name: "Shreveport", pron: "CHRIV-port" }], region: "Sud", tip: "Pas La Nouvelle-Orléans, mais Bâton-Rouge sur le Mississippi." },
+      { fips: "23", code: "me", coords: [-69.7795, 44.3106], state: "Maine", statePron: "MÈNE", capital: "Augusta", capitalPron: "o-GUEUS-ta", cities: [{ name: "Portland", pron: "PORT-leund" }, { name: "Bangor", pron: "BÈNN-gor" }], region: "Nord-Est", tip: "À ne pas confondre avec Augusta en Géorgie." },
+      { fips: "24", code: "md", coords: [-76.4922, 38.9784], state: "Maryland", statePron: "MÈ-ri-lend", capital: "Annapolis", capitalPron: "a-NÈ-po-lis", cities: [{ name: "Baltimore", pron: "BOL-ti-mor" }, { name: "Rockville", pron: "ROK-vil" }], region: "Nord-Est", tip: "Port sur la baie de Chesapeake, siège de l’Académie navale." },
+      { fips: "25", code: "ma", coords: [-71.0589, 42.3601], state: "Massachusetts", statePron: "ma-sa-TCHOU-sètts", capital: "Boston", capitalPron: "BOS-teun", cities: [{ name: "Worcester", pron: "OUOUS-teur" }, { name: "Springfield", pron: "SPRINNG-fild" }], region: "Nord-Est", tip: "Grande métropole historique de la Nouvelle-Angleterre." },
+      { fips: "26", code: "mi", coords: [-84.5555, 42.7325], state: "Michigan", statePron: "MI-chi-gueun", capital: "Lansing", capitalPron: "LÈN-sing", cities: [{ name: "Detroit", pron: "di-TROÏT" }, { name: "Grand Rapids", pron: "grènd RÈ-pidz" }], region: "Midwest", tip: "Au centre de la péninsule inférieure, distincte de Détroit." },
+      { fips: "27", code: "mn", coords: [-93.0900, 44.9537], state: "Minnesota", statePron: "mi-nè-SO-ta", capital: "Saint Paul", capitalPron: "sènt POL", cities: [{ name: "Minneapolis", pron: "mi-ni-È-po-lis" }, { name: "Rochester", pron: "RO-tches-teur" }], region: "Midwest", tip: "Forme les « Villes jumelles » avec sa voisine Minneapolis." },
+      { fips: "28", code: "ms", coords: [-90.1848, 32.2988], state: "Mississippi", statePron: "mi-si-SI-pi", capital: "Jackson", capitalPron: "DJÈK-seun", cities: [{ name: "Gulfport", pron: "GUEULF-port" }, { name: "Biloxi", pron: "bi-LEUK-si" }], region: "Sud", tip: "Nommée en hommage au président Andrew Jackson." },
+      { fips: "29", code: "mo", coords: [-92.1735, 38.5767], state: "Missouri", statePron: "mi-ZOU-ri", capital: "Jefferson City", capitalPron: "DJÈF-eur-seun SI-ti", cities: [{ name: "Kansas City", pron: "KÈN-zeuss SI-ti" }, { name: "St. Louis", pron: "sènt LOU-is" }], region: "Midwest", tip: "Située au centre de l’État, entre Saint-Louis et Kansas City." },
+      { fips: "30", code: "mt", coords: [-112.0391, 46.5891], state: "Montana", statePron: "mon-TÈ-na", capital: "Helena", capitalPron: "HÈ-le-na", cities: [{ name: "Billings", pron: "BI-lingz" }, { name: "Missoula", pron: "mi-ZOU-la" }], region: "Ouest", tip: "Ancienne ville minière d’or dans les Rocheuses." },
+      { fips: "31", code: "ne", coords: [-96.7026, 40.8136], state: "Nebraska", statePron: "ne-BRAS-ka", capital: "Lincoln", capitalPron: "LINN-keun", cities: [{ name: "Omaha", pron: "O-ma-ha" }, { name: "Bellevue", pron: "BÈL-viou" }], region: "Midwest", tip: "Capitale nommée en l’honneur d’Abraham Lincoln." },
+      { fips: "32", code: "nv", coords: [-119.7674, 39.1638], state: "Nevada", statePron: "né-VÈ-da", capital: "Carson City", capitalPron: "KAR-seun SI-ti", cities: [{ name: "Las Vegas", pron: "las VÈ-gueus" }, { name: "Reno", pron: "RI-no" }], region: "Ouest", tip: "Pas Las Vegas ! Carson City est à l’ouest près du lac Tahoe." },
+      { fips: "33", code: "nh", coords: [-71.5376, 43.2081], state: "New Hampshire", statePron: "niou HAMP-chir", capital: "Concord", capitalPron: "KONN-kord", cities: [{ name: "Manchester", pron: "MÈN-tchès-teur" }, { name: "Nashua", pron: "NA-choua" }], region: "Nord-Est", tip: "« Concorde » au cœur du New Hampshire." },
+      { fips: "34", code: "nj", coords: [-74.7429, 40.2171], state: "New Jersey", statePron: "niou DJEUR-zi", capital: "Trenton", capitalPron: "TRÈN-teun", cities: [{ name: "Newark", pron: "NIOU-eurk" }, { name: "Jersey City", pron: "DJEUR-zi SI-ti" }], region: "Nord-Est", tip: "Sur le fleuve Delaware, face à la Pennsylvanie." },
+      { fips: "35", code: "nm", coords: [-105.9378, 35.6870], state: "New Mexico", statePron: "niou MÈK-si-ko", capital: "Santa Fe", capitalPron: "SAN-ta FÈ", cities: [{ name: "Albuquerque", pron: "ÈL-bi-keur-ki" }, { name: "Las Cruces", pron: "las KROU-sès" }], region: "Ouest", tip: "La plus haute et l’une des plus anciennes capitales des États-Unis." },
+      { fips: "36", code: "ny", coords: [-73.7562, 42.6526], state: "New York", statePron: "niou YORK", capital: "Albany", capitalPron: "OL-ba-ni", cities: [{ name: "New York City", pron: "niou YORK" }, { name: "Buffalo", pron: "BEU-fa-lo" }, { name: "Rochester", pron: "RO-tches-teur" }], region: "Nord-Est", tip: "Piège classique : la capitale de l’État de New York est Albany." },
+      { fips: "37", code: "nc", coords: [-78.6382, 35.7796], state: "North Carolina", statePron: "norf ka-ro-LAÏ-na", capital: "Raleigh", capitalPron: "RO-li", cities: [{ name: "Charlotte", pron: "CHAR-lot" }, { name: "Greensboro", pron: "GRINZ-beu-ro" }], region: "Sud", tip: "Fait partie du « Research Triangle » avec Durham et Chapel Hill." },
+      { fips: "38", code: "nd", coords: [-100.7837, 46.8083], state: "North Dakota", statePron: "norf da-KO-ta", capital: "Bismarck", capitalPron: "BIZ-mark", cities: [{ name: "Fargo", pron: "FAR-go" }, { name: "Grand Forks", pron: "grènd FORKS" }], region: "Midwest", tip: "Sur la rivière Missouri, nommée d’après Otto von Bismarck." },
+      { fips: "39", code: "oh", coords: [-82.9988, 39.9612], state: "Ohio", statePron: "o-HAÏ-o", capital: "Columbus", capitalPron: "ko-LEUM-beus", cities: [{ name: "Cleveland", pron: "KLIV-leund" }, { name: "Cincinnati", pron: "sin-si-NÈ-ti" }], region: "Midwest", tip: "Plus grande ville et capitale de l’Ohio, au centre de l’État." },
+      { fips: "40", code: "ok", coords: [-97.5164, 35.4676], state: "Oklahoma", statePron: "o-kla-HO-ma", capital: "Oklahoma City", capitalPron: "o-kla-HO-ma SI-ti", cities: [{ name: "Tulsa", pron: "TEUL-sa" }, { name: "Norman", pron: "NOR-meun" }], region: "Sud", tip: "Le nom de l’État suivi de « City »." },
+      { fips: "41", code: "or", coords: [-123.0351, 44.9429], state: "Oregon", statePron: "O-ri-gueun", capital: "Salem", capitalPron: "SÈ-leum", cities: [{ name: "Portland", pron: "PORT-leund" }, { name: "Eugene", pron: "iou-DJINE" }], region: "Ouest", tip: "Dans la vallée de la Willamette, au sud de Portland." },
+      { fips: "42", code: "pa", coords: [-76.8867, 40.2732], state: "Pennsylvania", statePron: "pèn-sil-VÈ-nya", capital: "Harrisburg", capitalPron: "HÈ-ris-beurg", cities: [{ name: "Philadelphia", pron: "fi-la-DÈL-fi-a" }, { name: "Pittsburgh", pron: "PITS-beurg" }], region: "Nord-Est", tip: "Entre Philadelphie et Pittsburgh, sur la rivière Susquehanna." },
+      { fips: "44", code: "ri", coords: [-71.4128, 41.8240], state: "Rhode Island", statePron: "rod AÏ-lend", capital: "Providence", capitalPron: "PROV-i-dèns", cities: [{ name: "Warwick", pron: "OUOR-ik" }, { name: "Cranston", pron: "KRÈNS-teun" }], region: "Nord-Est", tip: "Fondée par Roger Williams sous le nom de Providence." },
+      { fips: "45", code: "sc", coords: [-81.0348, 34.0007], state: "South Carolina", statePron: "saouf ka-ro-LAÏ-na", capital: "Columbia", capitalPron: "ko-LEUM-bi-a", cities: [{ name: "Charleston", pron: "CHARLZ-teun" }, { name: "Greenville", pron: "GRIN-vil" }], region: "Sud", tip: "Située au centre géographique de la Caroline du Sud." },
+      { fips: "46", code: "sd", coords: [-100.3510, 44.3668], state: "South Dakota", statePron: "saouf da-KO-ta", capital: "Pierre", capitalPron: "PIR", cities: [{ name: "Sioux Falls", pron: "sou FOLZ" }, { name: "Rapid City", pron: "RÈ-pid SI-ti" }], region: "Midwest", tip: "Se prononce « Pir » en anglais (comme Pierre Chouteau)." },
+      { fips: "47", code: "tn", coords: [-86.7816, 36.1627], state: "Tennessee", statePron: "tè-ni-SI", capital: "Nashville", capitalPron: "NACH-vil", cities: [{ name: "Memphis", pron: "MÈM-fis" }, { name: "Knoxville", pron: "NOKS-vil" }], region: "Sud", tip: "Capitale de la musique country au centre du Tennessee." },
+      { fips: "48", code: "tx", coords: [-97.7431, 30.2672], state: "Texas", statePron: "TÈK-sas", capital: "Austin", capitalPron: "OS-tinn", cities: [{ name: "Houston", pron: "HIOUS-teun" }, { name: "Dallas", pron: "DÈ-las" }, { name: "San Antonio", pron: "sann an-TO-ni-o" }], region: "Sud", tip: "Ni Houston ni Dallas, mais Austin au centre du Texas." },
+      { fips: "49", code: "ut", coords: [-111.8910, 40.7608], state: "Utah", statePron: "IOU-ta", capital: "Salt Lake City", capitalPron: "solt LÈK SI-ti", cities: [{ name: "West Valley City", pron: "ouèst VÈ-li SI-ti" }, { name: "Provo", pron: "PRO-vo" }], region: "Ouest", tip: "Au bord du Grand Lac Salé (« Salt Lake »)." },
+      { fips: "50", code: "vt", coords: [-72.5754, 44.2601], state: "Vermont", statePron: "veur-MONT", capital: "Montpelier", capitalPron: "mont-PI-li-eur", cities: [{ name: "Burlington", pron: "BEUR-ling-teun" }, { name: "Essex", pron: "È-sèks" }], region: "Nord-Est", tip: "La plus petite capitale d’État américaine par sa population." },
+      { fips: "51", code: "va", coords: [-77.4360, 37.5407], state: "Virginia", statePron: "veur-DJI-nya", capital: "Richmond", capitalPron: "RITCH-mond", cities: [{ name: "Virginia Beach", pron: "veur-DJI-nya BITCH" }, { name: "Norfolk", pron: "NOR-fok" }], region: "Sud", tip: "Sur la rivière James, ancienne capitale confédérée." },
+      { fips: "53", code: "wa", coords: [-122.9007, 47.0379], state: "Washington", statePron: "OUO-chin-tonn", capital: "Olympia", capitalPron: "o-LIM-pi-a", cities: [{ name: "Seattle", pron: "si-È-teul" }, { name: "Spokane", pron: "spo-KÈN" }, { name: "Tacoma", pron: "ta-KO-ma" }], region: "Ouest", tip: "Pas Seattle ! Olympia est au sud du Puget Sound." },
+      { fips: "54", code: "wv", coords: [-81.6326, 38.3498], state: "West Virginia", statePron: "ouèst veur-DJI-nya", capital: "Charleston", capitalPron: "CHARLZ-teun", cities: [{ name: "Huntington", pron: "HEUN-ting-teun" }, { name: "Morgantown", pron: "MOR-guen-taoun" }], region: "Sud", tip: "À ne pas confondre avec Charleston en Caroline du Sud." },
+      { fips: "55", code: "wi", coords: [-89.4012, 43.0731], state: "Wisconsin", statePron: "ouis-KON-sin", capital: "Madison", capitalPron: "MÈ-di-seun", cities: [{ name: "Milwaukee", pron: "mil-OUO-ki" }, { name: "Green Bay", pron: "grine BÈ" }], region: "Midwest", tip: "Construite entre deux lacs, le lac Mendota et le lac Monona." },
+      { fips: "56", code: "wy", coords: [-104.8202, 41.1400], state: "Wyoming", statePron: "ouaï-O-ming", capital: "Cheyenne", capitalPron: "chaï-ÈNN", cities: [{ name: "Casper", pron: "KÈS-peur" }, { name: "Laramie", pron: "LÈ-ra-mi" }], region: "Ouest", tip: "Située à l’extrême sud-est de l’État, près du Colorado." }
+    ];
+
+    // Cache des géométries GeoJSON par code FIPS
+    const stateGeometriesMap = new Map();
+    let atlasLoaded = false;
+
+    // État en mémoire de la session
+    const state = {
+      mode: "flashcards", // "flashcards" | "quiz" | "deck"
+      region: "ALL",
+      deck: [...US_STATES_DATA],
+      currentIndex: 0,
+      isFlipped: false,
+      showFrontMapHint: false,
+      autoAudio: false,
+      mastered: new Set(),
+      quizScore: 0,
+      quizStreak: 0,
+      quizQuestionCount: 0,
+      currentQuizItem: null,
+      quizAnswered: false,
+      searchQuery: "",
+      speechRate: 0.95, // 0.95 (normal) ou 0.68 (lent)
+      activeSpeakerBtn: null
+    };
+
+    // Références DOM
+    const els = {
+      feedbackBanner: document.getElementById("feedback-banner"),
+      masteredCount: document.getElementById("mastered-count"),
+      reviewCount: document.getElementById("review-count"),
+      quizScore: document.getElementById("quiz-score"),
+      quizStreak: document.getElementById("quiz-streak"),
+      speedNormalBtn: document.getElementById("speed-normal-btn"),
+      speedSlowBtn: document.getElementById("speed-slow-btn"),
+      autoAudioBtn: document.getElementById("auto-audio-btn"),
+      regionFilter: document.getElementById("region-filter"),
+      shuffleBtn: document.getElementById("shuffle-btn"),
+      resetBtn: document.getElementById("reset-btn"),
+      modeFlashcards: document.getElementById("mode-flashcards"),
+      modeQuiz: document.getElementById("mode-quiz"),
+      modeDeck: document.getElementById("mode-deck"),
+      viewFlashcards: document.getElementById("view-flashcards"),
+      viewQuiz: document.getElementById("view-quiz"),
+      viewDeck: document.getElementById("view-deck"),
+      cardCounter: document.getElementById("card-counter"),
+      toggleFrontMapBtn: document.getElementById("toggle-front-map-btn"),
+      cardCodeBadge: document.getElementById("card-code-badge"),
+      cardRegionBadge: document.getElementById("card-region-badge"),
+      flashcardObject: document.getElementById("flashcard-object"),
+      frontMasteredPill: document.getElementById("front-mastered-pill"),
+      frontFlagContainer: document.getElementById("front-flag-container"),
+      frontMapHintWrapper: document.getElementById("front-map-hint-wrapper"),
+      frontMapContainer: document.getElementById("front-map-container"),
+      frontState: document.getElementById("front-state"),
+      frontPronunciation: document.getElementById("front-pronunciation"),
+      speakFrontStateBtn: document.getElementById("speak-front-state-btn"),
+      backMiniFlag: document.getElementById("back-mini-flag"),
+      backStateLabel: document.getElementById("back-state-label"),
+      backCapital: document.getElementById("back-capital"),
+      backCapitalPron: document.getElementById("back-capital-pron"),
+      speakBackCapitalBtn: document.getElementById("speak-back-capital-btn"),
+      backMapContainer: document.getElementById("back-map-container"),
+      backCitiesList: document.getElementById("back-cities-list"),
+      backTip: document.getElementById("back-tip"),
+      prevCardBtn: document.getElementById("prev-card-btn"),
+      flipCardBtn: document.getElementById("flip-card-btn"),
+      nextCardBtn: document.getElementById("next-card-btn"),
+      toggleMasteredBtn: document.getElementById("toggle-mastered-btn"),
+      quizQNum: document.getElementById("quiz-q-num"),
+      quizRegion: document.getElementById("quiz-region"),
+      quizFlagContainer: document.getElementById("quiz-flag-container"),
+      quizStateName: document.getElementById("quiz-state-name"),
+      quizStatePron: document.getElementById("quiz-state-pron"),
+      speakQuizStateBtn: document.getElementById("speak-quiz-state-btn"),
+      quizMapContainer: document.getElementById("quiz-map-container"),
+      quizMapCaption: document.getElementById("quiz-map-caption"),
+      quizOptions: document.getElementById("quiz-options"),
+      quizExplanation: document.getElementById("quiz-explanation"),
+      quizExplanationText: document.getElementById("quiz-explanation-text"),
+      quizExplanationCities: document.getElementById("quiz-explanation-cities"),
+      speakQuizCapitalBtn: document.getElementById("speak-quiz-capital-btn"),
+      nextQuizBtn: document.getElementById("next-quiz-btn"),
+      searchDeckInput: document.getElementById("search-deck-input"),
+      deckGrid: document.getElementById("deck-grid")
+    };
+
+    /**
+     * Charge les contours géographiques réels des 50 États depuis us-atlas (TopoJSON)
+     */
+    async function loadStatesAtlas() {
+      try {
+        if (typeof d3 === "undefined" || typeof topojson === "undefined") return;
+        const response = await fetch("https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json");
+        if (!response.ok) return;
+        const usTopo = await response.json();
+        const geo = topojson.feature(usTopo, usTopo.objects.states);
+        if (geo && Array.isArray(geo.features)) {
+          geo.features.forEach((feat) => {
+            const idStr = String(feat.id).padStart(2, "0");
+            stateGeometriesMap.set(idStr, feat);
+          });
+          atlasLoaded = true;
+          renderAll();
+          if (state.mode === "quiz" && state.currentQuizItem) {
+            renderQuizMap();
+          }
+        }
+      } catch (err) {
+        // Secours SVG géométrique automatique si hors-ligne
+      }
+    }
+
+    /**
+     * Crée le SVG de la carte de l'État avec un point marquant la position exacte de la capitale
+     * @param {Object} item - Données de l'État
+     * @param {Object} options - { showLabel: boolean, darkTheme: boolean, compact: boolean }
+     */
+    function createStateMapSVG(item, options = {}) {
+      const { showLabel = true, darkTheme = false, compact = false } = options;
+      const width = 220;
+      const height = 150;
+      const pad = compact ? 14 : 20;
+
+      const svgNS = "http://www.w3.org/2000/svg";
+      const svg = document.createElementNS(svgNS, "svg");
+      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      svg.setAttribute("class", "w-full h-full");
+      svg.setAttribute("role", "img");
+      svg.setAttribute("aria-label", showLabel ? `Carte de ${item.state} avec sa capitale ${item.capital}` : `Carte de ${item.state} avec l'emplacement de sa capitale`);
+
+      const feature = stateGeometriesMap.get(item.fips);
+
+      let cx = width * 0.52;
+      let cy = height * 0.48;
+      let pathD = "";
+
+      if (feature && typeof d3 !== "undefined") {
+        let projection;
+        if (item.code === "ak") {
+          // Projection dédiée à l'Alaska pour éviter la coupure de l'antiméridien des Aléoutiennes
+          projection = d3.geoAlbers()
+            .rotate([154, 0])
+            .center([-2, 58.5])
+            .parallels([55, 65])
+            .fitExtent([[pad, pad], [width - pad, height - pad]], feature);
+        } else if (item.code === "hi") {
+          // Projection dédiée à Hawaï
+          projection = d3.geoAlbers()
+            .rotate([157, 0])
+            .center([0, 20.5])
+            .parallels([18, 23])
+            .fitExtent([[pad, pad], [width - pad, height - pad]], feature);
+        } else {
+          // Projection conique conforme d'Albers centrée sur la longitude de l'État
+          const [lon] = item.coords;
+          projection = d3.geoAlbers()
+            .rotate([-lon, 0])
+            .center([0, 38])
+            .parallels([29.5, 45.5])
+            .fitExtent([[pad, pad], [width - pad, height - pad]], feature);
+        }
+
+        const pathGenerator = d3.geoPath().projection(projection);
+        pathD = pathGenerator(feature) || "";
+
+        const projectedPoint = projection(item.coords);
+        if (projectedPoint && Number.isFinite(projectedPoint[0]) && Number.isFinite(projectedPoint[1])) {
+          cx = projectedPoint[0];
+          cy = projectedPoint[1];
+        }
+      } else {
+        // Silhouette stylisée de secours si le CDN géographique est inaccessible
+        pathD = "M 34 28 L 182 24 L 190 116 L 132 126 L 30 112 Z";
+      }
+
+      // Dessin de la silhouette de l'État
+      const statePath = document.createElementNS(svgNS, "path");
+      statePath.setAttribute("d", pathD);
+      statePath.setAttribute("fill", darkTheme ? "#1e3a6e" : "#dbeafe");
+      statePath.setAttribute("stroke", darkTheme ? "#7dd3fc" : "#14284b");
+      statePath.setAttribute("stroke-width", compact ? "2.4" : "2.2");
+      statePath.setAttribute("stroke-linejoin", "round");
+      svg.appendChild(statePath);
+
+      // Groupe marqueur de la capitale
+      const markerGroup = document.createElementNS(svgNS, "g");
+
+      // Halo pulsant
+      const pulseCircle = document.createElementNS(svgNS, "circle");
+      pulseCircle.setAttribute("cx", cx.toFixed(1));
+      pulseCircle.setAttribute("cy", cy.toFixed(1));
+      pulseCircle.setAttribute("r", compact ? "6" : "7");
+      pulseCircle.setAttribute("fill", darkTheme ? "#fbbf24" : "#ef4444");
+      pulseCircle.setAttribute("class", "capital-pulse-ring");
+      markerGroup.appendChild(pulseCircle);
+
+      // Point principal de la capitale
+      const dotCircle = document.createElementNS(svgNS, "circle");
+      dotCircle.setAttribute("cx", cx.toFixed(1));
+      dotCircle.setAttribute("cy", cy.toFixed(1));
+      dotCircle.setAttribute("r", compact ? "4.2" : "5");
+      dotCircle.setAttribute("fill", darkTheme ? "#fbbf24" : "#dc2626");
+      dotCircle.setAttribute("stroke", "#ffffff");
+      dotCircle.setAttribute("stroke-width", "1.8");
+      markerGroup.appendChild(dotCircle);
+
+      // Étiquette du nom de la capitale si demandée
+      if (showLabel && !compact) {
+        const labelText = `★ ${item.capital}`;
+        const approxTextWidth = Math.max(58, labelText.length * 6.4 + 14);
+        const boxHeight = 20;
+
+        // Positionnement intelligent pour rester dans le cadre SVG
+        let boxX = cx - approxTextWidth / 2;
+        if (boxX < 6) boxX = 6;
+        if (boxX + approxTextWidth > width - 6) boxX = width - 6 - approxTextWidth;
+
+        const placeAbove = cy > height * 0.45;
+        let boxY = placeAbove ? cy - 29 : cy + 10;
+        if (boxY < 4) boxY = cy + 10;
+        if (boxY + boxHeight > height - 4) boxY = cy - 29;
+
+        const labelBg = document.createElementNS(svgNS, "rect");
+        labelBg.setAttribute("x", boxX.toFixed(1));
+        labelBg.setAttribute("y", boxY.toFixed(1));
+        labelBg.setAttribute("width", approxTextWidth.toFixed(1));
+        labelBg.setAttribute("height", String(boxHeight));
+        labelBg.setAttribute("rx", "6");
+        labelBg.setAttribute("fill", darkTheme ? "#091326" : "#14284b");
+        labelBg.setAttribute("fill-opacity", "0.92");
+        labelBg.setAttribute("stroke", darkTheme ? "#fbbf24" : "#ffffff");
+        labelBg.setAttribute("stroke-width", "1");
+        markerGroup.appendChild(labelBg);
+
+        const textEl = document.createElementNS(svgNS, "text");
+        textEl.setAttribute("x", (boxX + approxTextWidth / 2).toFixed(1));
+        textEl.setAttribute("y", (boxY + 13.5).toFixed(1));
+        textEl.setAttribute("text-anchor", "middle");
+        textEl.setAttribute("fill", darkTheme ? "#fde68a" : "#ffffff");
+        textEl.setAttribute("font-family", "Inter, sans-serif");
+        textEl.setAttribute("font-weight", "700");
+        textEl.setAttribute("font-size", "10.5");
+        textEl.textContent = labelText;
+        markerGroup.appendChild(textEl);
+      }
+
+      svg.appendChild(markerGroup);
+      return svg;
+    }
+
+    /**
+     * Génère l'élément image du drapeau officiel de l'État avec secours SVG stylisé
+     */
+    function createFlagElement(item, sizeClass = "w-full h-full object-cover") {
+      const wrapper = document.createElement("div");
+      wrapper.className = "w-full h-full relative flex items-center justify-center bg-[#14284b]";
+
+      const img = document.createElement("img");
+      img.src = `https://flagcdn.com/w320/us-${item.code}.png`;
+      img.alt = `Drapeau officiel de ${item.state}`;
+      img.loading = "lazy";
+      img.className = sizeClass;
+
+      img.onerror = () => {
+        wrapper.innerHTML = `
+          <svg viewBox="0 0 160 100" class="w-full h-full" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Drapeau de ${item.state}">
+            <rect width="160" height="100" fill="#14284b"/>
+            <rect x="0" y="84" width="160" height="16" fill="#b91c1c"/>
+            <circle cx="80" cy="44" r="24" fill="none" stroke="#fbbf24" stroke-width="2.5"/>
+            <text x="80" y="50" text-anchor="middle" fill="#ffffff" font-family="Inter, sans-serif" font-weight="800" font-size="18">${item.code.toUpperCase()}</text>
+          </svg>
+        `;
+      };
+
+      wrapper.appendChild(img);
+      return wrapper;
+    }
+
+    /**
+     * Synthèse vocale en anglais américain (en-US) via Web Speech API
+     */
+    let preferredUsVoice = null;
+
+    function loadUsVoices() {
+      if (!("speechSynthesis" in window)) return;
+      const voices = window.speechSynthesis.getVoices();
+      if (!voices || voices.length === 0) return;
+
+      preferredUsVoice =
+        voices.find((v) => v.lang === "en-US" && /Google|Samantha|Microsoft|Natural|Aria|Jenny|Guy/i.test(v.name)) ||
+        voices.find((v) => v.lang === "en-US") ||
+        voices.find((v) => v.lang && v.lang.startsWith("en")) ||
+        null;
+    }
+
+    if ("speechSynthesis" in window) {
+      loadUsVoices();
+      window.speechSynthesis.onvoiceschanged = loadUsVoices;
+    }
+
+    function clearSpeakingIndicator() {
+      if (state.activeSpeakerBtn) {
+        state.activeSpeakerBtn.classList.remove("is-speaking");
+        state.activeSpeakerBtn = null;
+      }
+    }
+
+    function speakTextEnUS(text, triggerBtn = null) {
+      if (!("speechSynthesis" in window)) {
+        showBanner("La synthèse vocale n'est pas prise en charge par ce navigateur.", "warning");
+        return;
+      }
+
+      try {
+        window.speechSynthesis.cancel();
+        clearSpeakingIndicator();
+
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = "en-US";
+        utterance.rate = state.speechRate;
+        utterance.pitch = 1.0;
+
+        if (!preferredUsVoice) loadUsVoices();
+        if (preferredUsVoice) {
+          utterance.voice = preferredUsVoice;
+        }
+
+        if (triggerBtn) {
+          state.activeSpeakerBtn = triggerBtn;
+          triggerBtn.classList.add("is-speaking");
+        }
+
+        utterance.onend = clearSpeakingIndicator;
+        utterance.onerror = clearSpeakingIndicator;
+
+        window.speechSynthesis.speak(utterance);
+      } catch (err) {
+        clearSpeakingIndicator();
+        showBanner("Impossible de lancer la lecture audio pour le moment.", "warning");
+      }
+    }
+
+    function showBanner(message, type = "info") {
+      els.feedbackBanner.textContent = message;
+      els.feedbackBanner.className = "mb-5 px-4 py-3 rounded-2xl text-sm font-medium border transition-all";
+      if (type === "success") {
+        els.feedbackBanner.classList.add("bg-emerald-50", "text-emerald-800", "border-emerald-200");
+      } else if (type === "warning") {
+        els.feedbackBanner.classList.add("bg-amber-50", "text-amber-900", "border-amber-200");
+      } else {
+        els.feedbackBanner.classList.add("bg-sky-50", "text-sky-900", "border-sky-200");
+      }
+      els.feedbackBanner.classList.remove("hidden");
+    }
+
+    function hideBanner() {
+      els.feedbackBanner.classList.add("hidden");
+    }
+
+    function getFilteredPool() {
+      if (state.region === "ALL") return [...US_STATES_DATA];
+      if (state.region === "REVIEW") {
+        const toReview = US_STATES_DATA.filter((item) => !state.mastered.has(item.state));
+        return toReview.length > 0 ? toReview : [...US_STATES_DATA];
+      }
+      return US_STATES_DATA.filter((item) => item.region === state.region);
+    }
+
+    function shuffleArray(arr) {
+      const copy = [...arr];
+      for (let i = copy.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+      }
+      return copy;
+    }
+
+    function applyRegionAndRebuild(shouldShuffle = false) {
+      const pool = getFilteredPool();
+      state.deck = shouldShuffle ? shuffleArray(pool) : pool;
+      state.currentIndex = 0;
+      state.isFlipped = false;
+      renderAll();
+    }
+
+    function updateStatsUI() {
+      els.masteredCount.textContent = String(state.mastered.size);
+      els.reviewCount.textContent = String(US_STATES_DATA.length - state.mastered.size);
+      els.quizScore.textContent = String(state.quizScore);
+      els.quizStreak.textContent = String(state.quizStreak);
+    }
+
+    function setSpeechSpeed(rate) {
+      state.speechRate = rate;
+      const isSlow = rate < 0.85;
+      els.speedNormalBtn.className = isSlow
+        ? "px-2.5 py-1 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+        : "px-2.5 py-1 rounded-lg bg-[#14284b] text-white transition-colors";
+      els.speedSlowBtn.className = isSlow
+        ? "px-2.5 py-1 rounded-lg bg-[#14284b] text-white transition-colors"
+        : "px-2.5 py-1 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors";
+    }
+
+    function toggleAutoAudio() {
+      state.autoAudio = !state.autoAudio;
+      if (state.autoAudio) {
+        els.autoAudioBtn.textContent = "Auto-son : On";
+        els.autoAudioBtn.className = "px-2.5 py-1.5 rounded-xl border border-emerald-600 bg-emerald-600 text-white text-xs font-semibold transition-colors";
+      } else {
+        els.autoAudioBtn.textContent = "Auto-son : Off";
+        els.autoAudioBtn.className = "px-2.5 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors";
+      }
+    }
+
+    function toggleFrontMapHint() {
+      state.showFrontMapHint = !state.showFrontMapHint;
+      if (state.showFrontMapHint) {
+        els.toggleFrontMapBtn.textContent = "Indice carte : On";
+        els.toggleFrontMapBtn.className = "px-2.5 py-1 rounded-full bg-[#14284b] text-white border border-[#14284b] text-xs font-bold transition-colors";
+      } else {
+        els.toggleFrontMapBtn.textContent = "Indice carte : Off";
+        els.toggleFrontMapBtn.className = "px-2.5 py-1 rounded-full bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/70 dark:hover:bg-amber-900/80 text-amber-900 dark:text-amber-200 border border-amber-300/80 dark:border-amber-800 text-xs font-bold transition-colors";
+      }
+      renderFlashcard();
+    }
+
+    function setMode(newMode) {
+      state.mode = newMode;
+      hideBanner();
+
+      const modes = [
+        { key: "flashcards", btn: els.modeFlashcards, view: els.viewFlashcards },
+        { key: "quiz", btn: els.modeQuiz, view: els.viewQuiz },
+        { key: "deck", btn: els.modeDeck, view: els.viewDeck }
+      ];
+
+      for (const m of modes) {
+        const active = m.key === newMode;
+        m.view.classList.toggle("hidden", !active);
+        if (active) {
+          m.btn.className = "game-btn px-4 py-2.5 rounded-xl text-sm font-bold bg-[#14284b] text-white";
+        } else {
+          m.btn.className = "game-btn px-4 py-2.5 rounded-xl text-sm font-bold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700";
+        }
+      }
+
+      if (newMode === "quiz" && !state.currentQuizItem) {
+        generateQuizQuestion();
+      } else if (newMode === "deck") {
+        renderDeckGrid();
+      } else if (newMode === "flashcards") {
+        renderFlashcard();
+      }
+    }
+
+    function renderFlashcard() {
+      const total = state.deck.length;
+      if (total === 0) return;
+
+      if (state.currentIndex >= total) state.currentIndex = 0;
+      if (state.currentIndex < 0) state.currentIndex = total - 1;
+
+      const card = state.deck[state.currentIndex];
+      const isMastered = state.mastered.has(card.state);
+
+      els.cardCounter.textContent = `Carte ${state.currentIndex + 1} sur ${total}`;
+      els.cardCodeBadge.textContent = card.code.toUpperCase();
+      els.cardRegionBadge.textContent = card.region;
+
+      // Drapeau recto & miniature verso
+      els.frontFlagContainer.innerHTML = "";
+      els.frontFlagContainer.appendChild(createFlagElement(card));
+
+      // Indice carte géographique au recto (avec point rouge sans étiquette)
+      if (state.showFrontMapHint) {
+        els.frontFlagContainer.classList.remove("w-40", "sm:w-44");
+        els.frontFlagContainer.classList.add("w-36", "sm:w-40");
+        els.frontMapHintWrapper.classList.remove("hidden");
+        els.frontMapHintWrapper.classList.add("flex");
+        els.frontMapContainer.innerHTML = "";
+        els.frontMapContainer.appendChild(createStateMapSVG(card, { showLabel: false, darkTheme: false, compact: false }));
+      } else {
+        els.frontFlagContainer.classList.remove("w-36", "sm:w-40");
+        els.frontFlagContainer.classList.add("w-40", "sm:w-44");
+        els.frontMapHintWrapper.classList.add("hidden");
+        els.frontMapHintWrapper.classList.remove("flex");
+      }
+
+      els.backMiniFlag.innerHTML = "";
+      els.backMiniFlag.appendChild(createFlagElement(card));
+
+      // Carte géographique de l'État au verso avec le point et le nom de la capitale
+      els.backMapContainer.innerHTML = "";
+      els.backMapContainer.appendChild(createStateMapSVG(card, { showLabel: true, darkTheme: true, compact: false }));
+
+      els.frontState.textContent = card.state;
+      els.frontPronunciation.textContent = card.statePron;
+      els.frontMasteredPill.classList.toggle("hidden", !isMastered);
+
+      els.backStateLabel.textContent = card.state;
+      els.backCapital.textContent = card.capital;
+      els.backCapitalPron.textContent = `(${card.capitalPron})`;
+      els.backTip.textContent = card.tip;
+
+      // Villes principales avec boutons audio individuels
+      els.backCitiesList.innerHTML = "";
+      card.cities.forEach((city) => {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.setAttribute("data-no-flip", "true");
+        chip.title = `Écouter ${city.name} (${city.pron})`;
+        chip.className = "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-medium transition-colors";
+        chip.innerHTML = `
+          <span>🔊</span>
+          <span class="font-semibold">${city.name}</span>
+          <span class="italic text-sky-200/90 text-[11px]">${city.pron}</span>
+        `;
+        chip.addEventListener("click", (e) => {
+          e.stopPropagation();
+          speakTextEnUS(city.name, chip);
+        });
+        els.backCitiesList.appendChild(chip);
+      });
+
+      els.flashcardObject.classList.toggle("is-flipped", state.isFlipped);
+
+      if (isMastered) {
+        els.toggleMasteredBtn.textContent = "✓ État maîtrisé (cliquer pour remettre à revoir)";
+        els.toggleMasteredBtn.className = "game-btn w-full py-3 px-4 rounded-2xl text-sm font-bold bg-emerald-100 text-emerald-900 border border-emerald-300";
+      } else {
+        els.toggleMasteredBtn.textContent = "✓ Marquer cet État comme maîtrisé";
+        els.toggleMasteredBtn.className = "game-btn w-full py-3 px-4 rounded-2xl text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white";
+      }
+    }
+
+    function flipCurrentCard() {
+      state.isFlipped = !state.isFlipped;
+      els.flashcardObject.classList.toggle("is-flipped", state.isFlipped);
+      if (state.autoAudio) {
+        const card = state.deck[state.currentIndex];
+        if (!card) return;
+        if (state.isFlipped) {
+          speakTextEnUS(card.capital, els.speakBackCapitalBtn);
+        } else {
+          speakTextEnUS(card.state, els.speakFrontStateBtn);
+        }
+      }
+    }
+
+    function renderQuizMap() {
+      const target = state.currentQuizItem;
+      if (!target) return;
+      els.quizMapContainer.innerHTML = "";
+      els.quizMapContainer.appendChild(
+        createStateMapSVG(target, {
+          showLabel: state.quizAnswered,
+          darkTheme: false,
+          compact: !state.quizAnswered
+        })
+      );
+      els.quizMapCaption.textContent = state.quizAnswered
+        ? `Capitale : ${target.capital}`
+        : "Position de la capitale";
+    }
+
+    function generateQuizQuestion() {
+      const pool = state.deck.length >= 4 ? state.deck : US_STATES_DATA;
+      const target = pool[Math.floor(Math.random() * pool.length)];
+
+      const distractorsPool = US_STATES_DATA.filter((item) => item.capital !== target.capital);
+      const distractors = shuffleArray(distractorsPool).slice(0, 3);
+      const options = shuffleArray([target, ...distractors]);
+
+      state.currentQuizItem = target;
+      state.quizAnswered = false;
+      state.quizQuestionCount += 1;
+
+      els.quizQNum.textContent = String(state.quizQuestionCount);
+      els.quizRegion.textContent = target.region;
+      els.quizFlagContainer.innerHTML = "";
+      els.quizFlagContainer.appendChild(createFlagElement(target));
+      els.quizStateName.textContent = target.state;
+      els.quizStatePron.textContent = `se prononce ${target.statePron}`;
+      els.quizExplanation.classList.add("hidden");
+      els.nextQuizBtn.disabled = true;
+
+      renderQuizMap();
+
+      els.quizOptions.innerHTML = "";
+      options.forEach((opt) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "game-btn text-left p-4 rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/70 hover:border-[#14284b] dark:hover:border-sky-400 transition-colors";
+        btn.innerHTML = `
+          <div class="font-bold text-base text-slate-900 dark:text-white">${opt.capital}</div>
+          <div class="text-xs italic text-slate-500 dark:text-slate-400 mt-0.5">(${opt.capitalPron})</div>
+        `;
+        btn.addEventListener("click", () => handleQuizAnswer(btn, opt.capital === target.capital, target));
+        els.quizOptions.appendChild(btn);
+      });
+    }
+
+    function handleQuizAnswer(clickedBtn, isCorrect, target) {
+      if (state.quizAnswered) return;
+      state.quizAnswered = true;
+      els.nextQuizBtn.disabled = false;
+
+      const allButtons = Array.from(els.quizOptions.querySelectorAll("button"));
+      allButtons.forEach((b) => {
+        b.disabled = true;
+        const titleEl = b.querySelector("div");
+        if (titleEl && titleEl.textContent === target.capital) {
+          b.classList.remove("border-slate-200", "dark:border-slate-700", "bg-slate-50/70", "dark:bg-slate-800/70");
+          b.classList.add("border-emerald-500", "bg-emerald-50", "dark:bg-emerald-950/60");
+        }
+      });
+
+      if (isCorrect) {
+        state.quizScore += 10;
+        state.quizStreak += 1;
+        state.mastered.add(target.state);
+        els.quizExplanationText.innerHTML = `<span class="text-emerald-700 dark:text-emerald-400 font-bold">Bravo !</span> La capitale de <strong>${target.state}</strong> est bien <strong>${target.capital}</strong> (${target.capitalPron}).`;
+      } else {
+        state.quizStreak = 0;
+        clickedBtn.classList.remove("border-slate-200", "dark:border-slate-700", "bg-slate-50/70", "dark:bg-slate-800/70");
+        clickedBtn.classList.add("border-red-500", "bg-red-50", "dark:bg-red-950/60");
+        els.quizExplanationText.innerHTML = `<span class="text-red-700 dark:text-red-400 font-bold">Pas tout à fait.</span> La capitale de <strong>${target.state}</strong> est <strong>${target.capital}</strong> (${target.capitalPron}). ${target.tip}`;
+      }
+
+      const citySummary = target.cities.map((c) => `${c.name} (${c.pron})`).join(", ");
+      els.quizExplanationCities.textContent = `Villes principales : ${citySummary}`;
+      els.quizExplanation.classList.remove("hidden");
+      renderQuizMap();
+      updateStatsUI();
+      if (state.autoAudio) {
+        speakTextEnUS(target.capital, els.speakQuizCapitalBtn);
+      }
+    }
+
+    function renderDeckGrid() {
+      const q = state.searchQuery.trim().toLowerCase();
+      const filtered = state.deck.filter((item) => {
+        if (!q) return true;
+        const citiesJoined = item.cities.map((c) => c.name).join(" ").toLowerCase();
+        return (
+          item.state.toLowerCase().includes(q) ||
+          item.capital.toLowerCase().includes(q) ||
+          citiesJoined.includes(q) ||
+          item.region.toLowerCase().includes(q) ||
+          item.code.toLowerCase().includes(q)
+        );
+      });
+
+      els.deckGrid.innerHTML = "";
+      if (filtered.length === 0) {
+        els.deckGrid.innerHTML = `
+          <div class="col-span-full text-center py-10 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 text-slate-500">
+            Aucun État ne correspond à votre recherche.
+          </div>
+        `;
+        return;
+      }
+
+      filtered.forEach((item) => {
+        const isMastered = state.mastered.has(item.state);
+        const cardEl = document.createElement("div");
+        cardEl.className = "bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between gap-3";
+
+        const topSection = document.createElement("div");
+        topSection.innerHTML = `
+          <div class="flex items-center justify-between gap-2 mb-3">
+            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">${item.region} • ${item.code.toUpperCase()}</span>
+            ${isMastered ? '<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">✓ Maîtrisé</span>' : ''}
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="deck-flag-slot flag-frame w-16 h-11 rounded-lg overflow-hidden shrink-0 bg-slate-100 dark:bg-slate-800"></div>
+            <div class="deck-map-slot state-map-box w-16 h-11 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden shrink-0 bg-slate-50 dark:bg-slate-800/80" title="Position de ${item.capital} dans ${item.state}"></div>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-1.5">
+                <h3 class="text-base sm:text-lg font-extrabold text-[#14284b] dark:text-white truncate">${item.state}</h3>
+                <button type="button" class="speak-deck-state shrink-0 p-1.5 rounded-lg bg-red-50 hover:bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300 text-xs" title="Écouter ${item.state}">🔊</button>
+              </div>
+              <p class="text-xs italic font-semibold text-red-700 dark:text-red-400 truncate">se prononce ${item.statePron}</p>
+            </div>
+          </div>
+        `;
+
+        topSection.querySelector(".deck-flag-slot").appendChild(createFlagElement(item));
+        topSection.querySelector(".deck-map-slot").appendChild(createStateMapSVG(item, { showLabel: false, darkTheme: false, compact: true }));
+        const stateAudioBtn = topSection.querySelector(".speak-deck-state");
+        stateAudioBtn.addEventListener("click", () => speakTextEnUS(item.state, stateAudioBtn));
+
+        const bottomSection = document.createElement("div");
+        bottomSection.className = "pt-3 border-t border-slate-100 dark:border-slate-800";
+        const citiesText = item.cities.map((c) => `${c.name} (${c.pron})`).join(", ");
+        bottomSection.innerHTML = `
+          <div class="text-[11px] uppercase tracking-wider text-slate-400">Capitale</div>
+          <div class="flex items-center justify-between gap-2 mt-0.5">
+            <div class="text-base font-bold text-slate-900 dark:text-slate-100">${item.capital} <span class="text-xs font-normal italic text-slate-500">(${item.capitalPron})</span></div>
+            <button type="button" class="speak-deck-cap shrink-0 px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold" title="Écouter ${item.capital}">🔊 Capitale</button>
+          </div>
+          <div class="text-xs text-slate-500 dark:text-slate-400 mt-1.5"><strong class="font-semibold">Villes :</strong> ${citiesText}</div>
+        `;
+
+        const capAudioBtn = bottomSection.querySelector(".speak-deck-cap");
+        capAudioBtn.addEventListener("click", () => speakTextEnUS(item.capital, capAudioBtn));
+
+        cardEl.appendChild(topSection);
+        cardEl.appendChild(bottomSection);
+        els.deckGrid.appendChild(cardEl);
+      });
+    }
+
+    function renderAll() {
+      updateStatsUI();
+      renderFlashcard();
+      if (state.mode === "deck") {
+        renderDeckGrid();
+      }
+    }
+
+    // Écouteurs d'événements
+    els.modeFlashcards.addEventListener("click", () => setMode("flashcards"));
+    els.modeQuiz.addEventListener("click", () => setMode("quiz"));
+    els.modeDeck.addEventListener("click", () => setMode("deck"));
+
+    els.speedNormalBtn.addEventListener("click", () => setSpeechSpeed(0.95));
+    els.speedSlowBtn.addEventListener("click", () => setSpeechSpeed(0.68));
+    els.autoAudioBtn.addEventListener("click", toggleAutoAudio);
+    els.toggleFrontMapBtn.addEventListener("click", toggleFrontMapHint);
+
+    els.flashcardObject.addEventListener("click", (e) => {
+      if (e.target.closest("[data-no-flip='true']")) return;
+      flipCurrentCard();
+    });
+
+    els.flashcardObject.addEventListener("keydown", (e) => {
+      if (e.target.closest("[data-no-flip='true']")) return;
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        flipCurrentCard();
+      }
+    });
+
+    els.speakFrontStateBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const card = state.deck[state.currentIndex];
+      if (card) speakTextEnUS(card.state, els.speakFrontStateBtn);
+    });
+
+    els.speakBackCapitalBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const card = state.deck[state.currentIndex];
+      if (card) speakTextEnUS(card.capital, els.speakBackCapitalBtn);
+    });
+
+    els.speakQuizStateBtn.addEventListener("click", () => {
+      if (state.currentQuizItem) {
+        speakTextEnUS(state.currentQuizItem.state, els.speakQuizStateBtn);
+      }
+    });
+
+    els.speakQuizCapitalBtn.addEventListener("click", () => {
+      if (state.currentQuizItem) {
+        speakTextEnUS(state.currentQuizItem.capital, els.speakQuizCapitalBtn);
+      }
+    });
+
+    els.flipCardBtn.addEventListener("click", flipCurrentCard);
+
+    function goToCardOffset(delta) {
+      state.currentIndex += delta;
+      state.isFlipped = false;
+      renderFlashcard();
+      if (state.autoAudio) {
+        const card = state.deck[state.currentIndex];
+        if (card) speakTextEnUS(card.state, els.speakFrontStateBtn);
+      }
+    }
+
+    els.prevCardBtn.addEventListener("click", () => goToCardOffset(-1));
+
+    els.nextCardBtn.addEventListener("click", () => goToCardOffset(1));
+
+    els.toggleMasteredBtn.addEventListener("click", () => {
+      const card = state.deck[state.currentIndex];
+      if (!card) return;
+      if (state.mastered.has(card.state)) {
+        state.mastered.delete(card.state);
+        showBanner(`${card.state} remis dans les États à revoir.`, "info");
+      } else {
+        state.mastered.add(card.state);
+        showBanner(`${card.state} marqué comme maîtrisé !`, "success");
+      }
+      renderAll();
+    });
+
+    els.regionFilter.addEventListener("change", (e) => {
+      state.region = e.target.value;
+      if (state.region === "REVIEW" && state.mastered.size === US_STATES_DATA.length) {
+        showBanner("Tous les 50 États sont déjà maîtrisés ! Affichage complet.", "success");
+      } else {
+        const labelMap = {
+          ALL: "tous les États (50)",
+          REVIEW: "les États à revoir"
+        };
+        showBanner(`Filtre appliqué : ${labelMap[state.region] || state.region}.`, "info");
+      }
+      applyRegionAndRebuild(false);
+      if (state.mode === "quiz") {
+        generateQuizQuestion();
+      }
+    });
+
+    els.shuffleBtn.addEventListener("click", () => {
+      applyRegionAndRebuild(true);
+      if (state.mode === "quiz") {
+        generateQuizQuestion();
+      }
+      showBanner("Les cartes ont été mélangées.", "warning");
+    });
+
+    els.resetBtn.addEventListener("click", () => {
+      state.mastered.clear();
+      state.quizScore = 0;
+      state.quizStreak = 0;
+      state.quizQuestionCount = 0;
+      state.region = "ALL";
+      state.searchQuery = "";
+      els.regionFilter.value = "ALL";
+      els.searchDeckInput.value = "";
+      applyRegionAndRebuild(false);
+      if (state.mode === "quiz") {
+        generateQuizQuestion();
+      }
+      showBanner("Progression et score réinitialisés pour la session.", "info");
+    });
+
+    els.nextQuizBtn.addEventListener("click", generateQuizQuestion);
+    // Navigation clavier globale (Flèches, Espace, S pour le son, M pour l'indice carte)
+    document.addEventListener("keydown", (e) => {
+      const tag = document.activeElement ? document.activeElement.tagName : "";
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+
+      if (e.key.toLowerCase() === "m" && state.mode === "flashcards") {
+        e.preventDefault();
+        toggleFrontMapHint();
+        return;
+      }
+
+      if (e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        if (state.mode === "flashcards") {
+          const card = state.deck[state.currentIndex];
+          if (!card) return;
+          if (state.isFlipped) {
+            speakTextEnUS(card.capital, els.speakBackCapitalBtn);
+          } else {
+            speakTextEnUS(card.state, els.speakFrontStateBtn);
+          }
+        } else if (state.mode === "quiz" && state.currentQuizItem) {
+          speakTextEnUS(state.currentQuizItem.state, els.speakQuizStateBtn);
+        }
+        return;
+      }
+
+      if (state.mode === "flashcards") {
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          goToCardOffset(-1);
+        } else if (e.key === "ArrowRight") {
+          e.preventDefault();
+          goToCardOffset(1);
+        } else if (e.key === " " && document.activeElement !== els.flashcardObject) {
+          e.preventDefault();
+          flipCurrentCard();
+        }
+      }
+    });
+
+    // Initialisation
+    renderAll();
+    loadStatesAtlas();
+  </script>
+</body>
+</html>
